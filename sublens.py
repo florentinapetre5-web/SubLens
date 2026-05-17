@@ -2,8 +2,6 @@
 """
 SubLens - Live game subtitle/dialog translator (PySide6)
 
-Runs alongside the old Tk prototype; does not affect the Tk version (translator.py).
-
 Features:
   - Fast multi-monitor capture via mss (Pillow fallback)
   - LRU translation cache (200 entries)
