@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """
-SubLens — Oyun altyazı / diyalog canlı çevirmen (PySide6)
+SubLens - Live game subtitle/dialog translator (PySide6)
 
-Eski Tk prototipinin yanında çalışır; Tk sürümünü (translator.py) etkilemez.
+Runs alongside the old Tk prototype; does not affect the Tk version (translator.py).
 
-Özellikler:
-  - mss ile hızlı çoklu-monitör yakalama (Pillow yedek)
-  - LRU çeviri önbelleği (200 girdi)
-  - Unicode emoji/sembol filtresi (ikonlar metin sanılmaz)
-  - "Stroke" altyazı modu: kontur'lu oyun altyazıları için (RDR2/SM2)
-  - Gelişmiş adaptif eşik (parlak/karmaşık arka plan)
-  - Hızlı altyazı modu: kısa aralık + hash'li değişim algısı
-  - Minimal sürüklenebilir overlay
-  - Global hotkey (F2/F3/F4 + Ctrl+Alt+R/T/G/H) — oyun tam ekrandayken çalışır
-  - Auto-pause: oyun penceresi pasifleşince tarama duraklatılır
-  - Glossary: özel isim ve terimleri çeviriden korur
-  - Otomatik mod algılama (6 OCR modunu deneyip en iyisini seçer)
-  - Sistem tepsisine küçültme
+Features:
+  - Fast multi-monitor capture via mss (Pillow fallback)
+  - LRU translation cache (200 entries)
+  - Unicode emoji/symbol filter (icons aren't mistaken for text)
+  - "Stroke" subtitle mode: for outlined game subtitles (RDR2/SM2)
+  - Advanced adaptive thresholding (bright/complex backgrounds)
+  - Fast subtitle mode: short interval + hash-based change detection
+  - Minimal draggable overlay
+  - Global hotkeys (F2/F3/F4 + Ctrl+Alt+R/T/G/H) - works while game is fullscreen
+  - Auto-pause: scanning pauses when the game window loses focus
+  - Glossary: protects proper names and terms from translation
+  - Automatic mode detection (tries 6 OCR modes and picks the best)
+  - Minimize to system tray
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ from PIL import (
 import pytesseract
 
 try:
-    import mss  # hızlı ekran yakalama
+    import mss  # fast screen capture
     HAS_MSS = True
 except Exception:
     HAS_MSS = False
@@ -80,8 +80,8 @@ TESSERACT_URL = "https://github.com/UB-Mannheim/tesseract/wiki"
 
 
 def find_tesseract() -> str | None:
-    """Tesseract binary'sini bul; bulamazsa None."""
-    # 1) Frozen EXE içinde gömülü mü?
+    """Locate the Tesseract binary; return None if not found."""
+    # 1) Bundled inside a frozen EXE?
     if getattr(sys, "frozen", False):
         bundled = Path(sys._MEIPASS) / "tesseract" / "tesseract.exe"
         if bundled.exists():
@@ -89,7 +89,7 @@ def find_tesseract() -> str | None:
             if tessdata.exists():
                 os.environ["TESSDATA_PREFIX"] = str(tessdata)
             return str(bundled)
-    # 2) Standart Windows kurulum yolları
+    # 2) Standard Windows install paths
     for cand in (
         r"C:\Program Files\Tesseract-OCR\tesseract.exe",
         r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
@@ -98,7 +98,7 @@ def find_tesseract() -> str | None:
     ):
         if cand and Path(cand).exists():
             return cand
-    # 3) PATH üzerinden
+    # 3) On PATH
     p = shutil.which("tesseract")
     if p:
         return p
@@ -128,22 +128,22 @@ LANGS = ["English", "Turkish", "Japanese", "Korean", "Chinese",
          "Portuguese", "Polish", "Auto-Detect"]
 
 PSM_OPTIONS = [
-    "6 — Tek metin bloğu (önerilen)",
-    "7 — Tek satır",
-    "11 — Dağınık metin",
-    "13 — Ham satır",
+    "6 - Single text block (recommended)",
+    "7 - Single line",
+    "11 - Sparse text",
+    "13 - Raw line",
 ]
 
 OCR_MODES = [
-    ("auto",     "Otomatik"),
-    ("light",    "Açık yazı / koyu zemin"),
-    ("dark",     "Koyu yazı / açık zemin"),
-    ("subtitle", "Altyazı (top-hat)"),
-    ("stroke",   "Konturlu altyazı (RDR2/SM2)"),
-    ("equalize", "Karmaşık arka plan (eq)"),
+    ("auto",     "Automatic"),
+    ("light",    "Light text / dark background"),
+    ("dark",     "Dark text / light background"),
+    ("subtitle", "Subtitle (top-hat)"),
+    ("stroke",   "Outlined subtitle (RDR2/SM2)"),
+    ("equalize", "Complex background (eq)"),
 ]
 
-# Renkler
+# Colors
 BG_DARK      = "#0d0f14"
 BG_CARD      = "#1a1e2a"
 ACCENT       = "#7c6af7"
@@ -162,13 +162,13 @@ ENGINE_ACCENT = {
 }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Çeviri Motorları (mevcut mantık — değişmedi)
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
+#  Translation engines (existing logic unchanged)
+# -----------------------------------------------------------------------------
 
 class LMStudioEngine:
     name = "LM Studio"; key = "lmstudio"
-    note = "Yerel AI  •  İnternet gerekmez  •  Kaynak yoğun"
+    note = "Local AI  -  No internet needed  -  Resource heavy"
 
     def __init__(self):
         self.url = "http://localhost:1234"
@@ -202,7 +202,7 @@ class LMStudioEngine:
 
 class DeepLFreeEngine:
     name = "DeepL Free"; key = "deepl"
-    note = "DeepL ücretsiz API  •  500k karakter/ay  •  Yüksek kalite"
+    note = "DeepL free API  -  500k characters/month  -  High quality"
 
     LANG_MAP = {
         "Turkish": "TR", "English": "EN-US", "Japanese": "JA", "Korean": "KO",
@@ -240,14 +240,14 @@ class DeepLFreeEngine:
 
     def test(self):
         if not self.api_key:
-            raise ValueError("API anahtarı girilmedi")
+            raise ValueError("API key is empty")
         u = self._request("https://api-free.deepl.com/v2/usage", {}, timeout=10)
-        return f"{u['character_count']:,} / {u['character_limit']:,} karakter kullanıldı"
+        return f"{u['character_count']:,} / {u['character_limit']:,} characters used"
 
 
 class GoogleFreeEngine:
     name = "Google Translate"; key = "google"
-    note = "Gayri resmi ücretsiz API  •  API anahtarı gerekmez"
+    note = "Unofficial free API  -  No API key required"
 
     LANG_MAP = {
         "Turkish": "tr", "English": "en", "Japanese": "ja", "Korean": "ko",
@@ -271,23 +271,23 @@ class GoogleFreeEngine:
     def test(self):
         result = self.translate("Hello world", "English", "Turkish")
         if not result:
-            raise ValueError("Boş yanıt")
-        return f"'Hello world' → '{result}'"
+            raise ValueError("Empty response")
+        return f"'Hello world' -> '{result}'"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Ekran yakalama (mss tercih, Pillow yedek)
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
+#  Screen capture (mss preferred, Pillow fallback)
+# -----------------------------------------------------------------------------
 
 class Grabber:
-    """Thread-safe ekran yakalayıcı. mss her thread için ayrı örnek ister."""
+    """Thread-safe screen grabber. mss needs a separate instance per thread."""
     def __init__(self):
         self._local = threading.local()
 
     def _sct(self):
         s = getattr(self._local, "sct", None)
         if s is None and HAS_MSS:
-            # mss >=10: mss.MSS, eski: mss.mss
+            # mss >=10: mss.MSS, older: mss.mss
             ctor = getattr(mss, "MSS", None) or mss.mss
             s = ctor()
             self._local.sct = s
@@ -311,9 +311,9 @@ class Grabber:
 GRABBER = Grabber()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  LRU çeviri önbelleği
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
+#  LRU translation cache
+# -----------------------------------------------------------------------------
 
 class LRUCache:
     def __init__(self, capacity=200):
@@ -333,9 +333,9 @@ class LRUCache:
             self.d.popitem(last=False)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  OCR yardımcıları
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
+#  OCR helpers
+# -----------------------------------------------------------------------------
 
 def otsu_threshold(gray: Image.Image) -> int:
     hist = gray.histogram()
@@ -374,23 +374,23 @@ def preprocess(img: Image.Image, scale: int, mode: str) -> Image.Image:
         return binary
 
     if mode == "stroke":
-        # Konturlu oyun altyazıları (RDR2, Spider-Man 2 vb.): parlak metin +
-        # koyu kontur. Önce edge maskesi, sonra kontur içini "doldur".
+        # Outlined game subtitles (RDR2, Spider-Man 2, etc.): bright text +
+        # dark outline. First find edges, then "fill" inside the outline.
         edges = gray.filter(ImageFilter.FIND_EDGES)
         edges = ImageEnhance.Contrast(edges).enhance(2.0)
         edge_mask = edges.point(lambda x: 255 if x > 60 else 0)
         edge_mask = edge_mask.filter(ImageFilter.MaxFilter(3))
-        # Yüksek parlaklık + edge yakınlığı = metin
+        # High brightness + proximity to edges = text
         bright = gray.point(lambda x: 255 if x > 180 else 0)
-        # Edge maskesi ile parlak bölgeyi kesiştir
+        # Intersect bright region with edge mask
         combined = ImageChops.multiply(bright, edge_mask)
-        # Tesseract için ters çevir: text=0, bg=255
+        # Invert for Tesseract: text=0, bg=255
         result = combined.point(lambda x: 0 if x > 80 else 255)
         result = result.filter(ImageFilter.MinFilter(3))
         return result
 
     if mode == "equalize":
-        # Karmaşık arka plan için histogram dengeleme
+        # Histogram equalization for complex backgrounds
         gray = ImageOps.equalize(gray)
         gray = ImageEnhance.Contrast(gray).enhance(1.8)
         avg = ImageStat.Stat(gray).mean[0]
@@ -414,19 +414,19 @@ def preprocess(img: Image.Image, scale: int, mode: str) -> Image.Image:
 
 
 def is_noise_word(word: str) -> bool:
-    """Emoji/ikon/sembol kalıntısı mı?"""
+    """Is this an emoji/icon/symbol leftover?"""
     if not word:
         return True
     letters = sum(1 for c in word if c.isalpha())
     digits = sum(1 for c in word if c.isdigit())
-    # Saf sembol / emoji
+    # Pure symbol / emoji
     if letters == 0 and digits == 0:
         return True
-    # Sembol kategorisi (So = Symbol, other) yoğunluğu yüksekse at
+    # Drop if symbol category (So = Symbol, other) density is high
     sym = sum(1 for c in word if unicodedata.category(c).startswith(("So", "Sk")))
     if sym >= max(1, len(word) // 3):
         return True
-    # Tek karakter ve harf değil
+    # Single character and not a letter
     if len(word) == 1 and not word.isalpha():
         return True
     return False
@@ -436,12 +436,12 @@ def strip_emoji(s: str) -> str:
     return "".join(c for c in s if not unicodedata.category(c).startswith(("So", "Sk", "Cn", "Co")))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Glossary (terim koruma) — pre-protect / post-restore
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
+#  Glossary (term protection) - pre-protect / post-restore
+# -----------------------------------------------------------------------------
 
 def parse_glossary(text: str) -> list[tuple[str, str]]:
-    """Her satır 'kaynak=hedef' veya yalnız 'kaynak' (çevirme). Yorumlar #."""
+    """Each line is 'source=target' or just 'source' (do not translate). '#' is a comment."""
     out = []
     for raw in (text or "").splitlines():
         line = raw.strip()
@@ -454,19 +454,19 @@ def parse_glossary(text: str) -> list[tuple[str, str]]:
             src, tgt = line, line
         if src:
             out.append((src, tgt))
-    # Uzun terimler önce eşleşsin (alt-string çakışması)
+    # Match longer terms first (avoid substring conflicts)
     out.sort(key=lambda kv: -len(kv[0]))
     return out
 
 
 def protect_terms(text: str, glossary: list[tuple[str, str]]) -> tuple[str, dict[str, str]]:
-    """Glossary terimlerini sentinellerle değiştirir; placeholder→hedef sözlüğü döndürür."""
+    """Replace glossary terms with sentinels; return a placeholder->target map."""
     if not glossary:
         return text, {}
     placeholders: dict[str, str] = {}
     out = text
     for i, (src, tgt) in enumerate(glossary):
-        token = f"⁣GT{i}⁣"  # invisible separator, çoğu motorda korunur
+        token = f"⁣GT{i}⁣"  # invisible separator, preserved by most engines
         pattern = re.compile(rf"(?i)\b{re.escape(src)}\b")
         if pattern.search(out):
             out = pattern.sub(token, out)
@@ -477,7 +477,7 @@ def protect_terms(text: str, glossary: list[tuple[str, str]]) -> tuple[str, dict
 def restore_terms(text: str, placeholders: dict[str, str]) -> str:
     for token, tgt in placeholders.items():
         text = text.replace(token, tgt)
-    # Motor sentineli kısmen yutmuşsa → 'GT3' kalıbını da yakala
+    # If the engine partially swallowed the sentinel, also match the bare 'GT3' pattern
     def _fallback(m):
         idx = m.group(1)
         for tok, tgt in placeholders.items():
@@ -488,12 +488,12 @@ def restore_terms(text: str, placeholders: dict[str, str]) -> str:
     return text
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Win32 yardımcıları
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
+#  Win32 helpers
+# -----------------------------------------------------------------------------
 
 def get_foreground_info() -> tuple[int, int, str]:
-    """Aktif pencere (hwnd, pid, title). win32 yoksa (0,0,'')."""
+    """Active window (hwnd, pid, title). Returns (0,0,'') if win32 is missing."""
     if not HAS_WIN32:
         return 0, 0, ""
     try:
@@ -505,9 +505,9 @@ def get_foreground_info() -> tuple[int, int, str]:
         return 0, 0, ""
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Tray ikonu (asset gerekmez, runtime'da çizilir)
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
+#  Tray icon (no asset required, drawn at runtime)
+# -----------------------------------------------------------------------------
 
 def make_tray_icon(active: bool = False) -> QIcon:
     pm = QPixmap(32, 32)
@@ -525,9 +525,9 @@ def make_tray_icon(active: bool = False) -> QIcon:
     return QIcon(pm)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Bölge Seçici
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
+#  Region Selector
+# -----------------------------------------------------------------------------
 
 class RegionSelector(QWidget):
     selected = Signal(tuple)
@@ -537,7 +537,7 @@ class RegionSelector(QWidget):
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setCursor(Qt.CrossCursor)
-        # Tüm sanal masaüstünü kapla
+        # Cover the entire virtual desktop
         geo = QRect()
         for scr in QGuiApplication.screens():
             geo = geo.united(scr.geometry())
@@ -550,14 +550,14 @@ class RegionSelector(QWidget):
     def paintEvent(self, _):
         p = QPainter(self)
         p.fillRect(self.rect(), QColor(0, 0, 0, 110))
-        # Üst metin
+        # Top text
         p.setFont(QFont("Segoe UI", 14, QFont.Bold))
         p.setPen(QColor(ACCENT_GLOW))
         p.drawText(self.rect().adjusted(0, 30, 0, 0), Qt.AlignHCenter | Qt.AlignTop,
-                   "Diyalog kutusunu seç   ·   ESC = İptal")
+                   "Select the dialog box   ·   ESC = Cancel")
         if self._start and self._end:
             r = QRect(self._start, self._end).normalized()
-            # Seçim alanını temizle
+            # Clear the selection area
             p.setCompositionMode(QPainter.CompositionMode_Clear)
             p.fillRect(r, Qt.transparent)
             p.setCompositionMode(QPainter.CompositionMode_SourceOver)
@@ -565,7 +565,7 @@ class RegionSelector(QWidget):
             p.setPen(pen)
             p.setBrush(Qt.NoBrush)
             p.drawRect(r)
-            # Boyut etiketi
+            # Size label
             p.setFont(QFont("Consolas", 10, QFont.Bold))
             p.setPen(QColor(TEXT_PRIMARY))
             p.drawText(r.adjusted(6, -22, 0, 0), Qt.AlignLeft | Qt.AlignTop,
@@ -602,9 +602,9 @@ class RegionSelector(QWidget):
             self.close()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 #  Overlay
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 class OverlayWindow(QWidget):
     def __init__(self, engine_key="google"):
@@ -616,7 +616,7 @@ class OverlayWindow(QWidget):
 
         accent = ENGINE_ACCENT.get(engine_key, ACCENT)
 
-        # Köşeleri yuvarlak kart
+        # Rounded-corner card
         self.card = QFrame(self)
         self.card.setObjectName("card")
         self.card.setStyleSheet(f"""
@@ -640,7 +640,7 @@ class OverlayWindow(QWidget):
         v.setContentsMargins(14, 10, 10, 10)
         v.setSpacing(6)
 
-        self.lbl = QLabel("…")
+        self.lbl = QLabel("...")
         self.lbl.setWordWrap(True)
         self.lbl.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.lbl.setStyleSheet(
@@ -707,9 +707,9 @@ class OverlayWindow(QWidget):
         self._drag_pos = None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Bridge (thread → UI sinyalleri)
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
+#  Bridge (thread -> UI signals)
+# -----------------------------------------------------------------------------
 
 class Bridge(QObject):
     log = Signal(str, str)
@@ -718,16 +718,16 @@ class Bridge(QObject):
     preview = Signal(QPixmap)
     models = Signal(list)
     show_overlay = Signal(str)
-    # Global hotkey'lerden tetiklenir (kbd thread → UI thread)
+    # Fired from global hotkeys (kbd thread -> UI thread)
     trigger_pick = Signal()
     trigger_once = Signal()
     trigger_toggle = Signal()
     trigger_hide_overlay = Signal()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Ana Pencere
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
+#  Main Window
+# -----------------------------------------------------------------------------
 
 class MainWindow(QMainWindow):
 
@@ -760,7 +760,7 @@ class MainWindow(QMainWindow):
         self.src_lang = cfg.get("src_lang", "English")
         self.tgt_lang = cfg.get("tgt_lang", "Turkish")
         self.fast_mode = bool(cfg.get("fast_mode", False))
-        # Yeni özellikler
+        # New features
         self.global_hotkeys_on = bool(cfg.get("global_hotkeys", HAS_KEYBOARD))
         self.auto_pause_on = bool(cfg.get("auto_pause", HAS_WIN32))
         self.minimize_to_tray = bool(cfg.get("minimize_to_tray", True))
@@ -768,14 +768,14 @@ class MainWindow(QMainWindow):
         self.glossary = parse_glossary(self.glossary_text)
 
         self.running = False
-        self._paused = False  # auto-pause durumu (thread durmaz, OCR atlanır)
+        self._paused = False  # auto-pause state (thread keeps running, OCR is skipped)
         self._stop_evt = threading.Event()
         self.last_text = ""
         self.last_hash = ""
         self.overlay: OverlayWindow | None = None
         self._cache = LRUCache(200)
         self._region_selector: RegionSelector | None = None
-        self._target_hwnd = 0  # auto-pause hedef pencere
+        self._target_hwnd = 0  # auto-pause target window
         self._self_pid = os.getpid()
         self._registered_hotkeys: list = []
         self._tray: QSystemTrayIcon | None = None
@@ -798,7 +798,7 @@ class MainWindow(QMainWindow):
         self._bind_shortcuts()
         self._update_start_state()
 
-        # Sinyali UI kurulduktan sonra bağla
+        # Connect the signal after the UI is built
         self.bridge.result.connect(self.result_lbl.setText)
 
         # Tray
@@ -808,7 +808,7 @@ class MainWindow(QMainWindow):
         if self.global_hotkeys_on:
             self._register_global_hotkeys()
 
-        # Auto-pause QTimer (her 800 ms)
+        # Auto-pause QTimer (every 800 ms)
         self._pause_timer = QTimer(self)
         self._pause_timer.setInterval(800)
         self._pause_timer.timeout.connect(self._check_auto_pause)
@@ -819,7 +819,7 @@ class MainWindow(QMainWindow):
             self._update_region_label()
             QTimer.singleShot(250, self._refresh_preview)
 
-    # ── Stil ────────────────────────────────────────────────────────────────
+    # -- Style ---------------------------------------------------------------
     def _apply_style(self):
         self.setStyleSheet(f"""
             QMainWindow, QDialog {{ background: {BG_DARK}; }}
@@ -871,7 +871,7 @@ class MainWindow(QMainWindow):
             QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
         """)
 
-    # ── UI inşa ─────────────────────────────────────────────────────────────
+    # -- UI build ------------------------------------------------------------
     def _build_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
@@ -879,16 +879,16 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(20, 18, 20, 16)
         root.setSpacing(10)
 
-        # Başlık
+        # Header
         hdr = QHBoxLayout()
         t1 = QLabel("SUB"); t1.setObjectName("title")
         t2 = QLabel("LENS"); t2.setObjectName("title2")
         hdr.addWidget(t1); hdr.addWidget(t2); hdr.addStretch(1)
-        self.info_btn = QPushButton("ⓘ  Bilgi")
+        self.info_btn = QPushButton("ⓘ  Info")
         self.info_btn.setProperty("class", "secondary"); self.info_btn.setObjectName("infoBtn")
         self.info_btn.setStyleSheet(f"background: {BG_CARD}; color: {TEXT_DIM};")
         self.info_btn.clicked.connect(self._open_info)
-        self.settings_btn = QPushButton("⚙  Ayarlar")
+        self.settings_btn = QPushButton("⚙  Settings")
         self.settings_btn.setStyleSheet(f"background: {BG_CARD}; color: {TEXT_DIM};")
         self.settings_btn.clicked.connect(self._open_settings)
         hdr.addWidget(self.info_btn); hdr.addWidget(self.settings_btn)
@@ -898,9 +898,9 @@ class MainWindow(QMainWindow):
         bar.setStyleSheet(f"background: {ACCENT}; max-height: 2px;")
         root.addWidget(bar)
 
-        # ── Hızlı Başlangıç kartı (katlanır) ──
+        # -- Quick-start card (collapsible) --
         self.help_toggle = QToolButton()
-        self.help_toggle.setText("💡  Hızlı başlangıç (göster)")
+        self.help_toggle.setText("\U0001f4a1  Quick start (show)")
         self.help_toggle.setCursor(Qt.PointingHandCursor)
         self.help_toggle.setStyleSheet(
             f"QToolButton {{ color: {TEXT_DIM}; background: transparent; border: none; "
@@ -918,9 +918,9 @@ class MainWindow(QMainWindow):
         self.help_card.hide()
         root.addWidget(self.help_card)
 
-        # Motor seçimi
+        # Engine selection
         eng = QHBoxLayout()
-        lab = QLabel("Motor:"); lab.setStyleSheet(f"color: {TEXT_DIM};")
+        lab = QLabel("Engine:"); lab.setStyleSheet(f"color: {TEXT_DIM};")
         eng.addWidget(lab)
         self.engine_btns = {}
         for key, e in self.ENGINES.items():
@@ -937,9 +937,9 @@ class MainWindow(QMainWindow):
 
         root.addWidget(self._sep())
 
-        # Dil seçimi
+        # Language selection
         lang = QHBoxLayout()
-        lang.addWidget(self._dim("Dil:"))
+        lang.addWidget(self._dim("Language:"))
         self.src_combo = QComboBox(); self.src_combo.addItems(LANGS)
         self.src_combo.setCurrentText(self.src_lang if self.src_lang in LANGS else "English")
         lang.addWidget(self.src_combo)
@@ -953,24 +953,24 @@ class MainWindow(QMainWindow):
 
         root.addWidget(self._sep())
 
-        # Bölge
+        # Region
         reg = QHBoxLayout()
-        self.pick_btn = QPushButton("📐  Bölge Seç (F2)")
+        self.pick_btn = QPushButton("\U0001f4d0  Pick Region (F2)")
         self.pick_btn.clicked.connect(self._pick_region)
         reg.addWidget(self.pick_btn)
-        self.auto_mode_btn = QPushButton("✨  Mod Bul")
+        self.auto_mode_btn = QPushButton("✨  Find Mode")
         self.auto_mode_btn.setToolTip(
-            "Seçilen bölge için en iyi OCR modunu otomatik bulur "
-            "(6 modu deneyip en yüksek güveni seçer)")
+            "Automatically picks the best OCR mode for the selected region "
+            "(tries 6 modes and chooses the one with the highest confidence)")
         self.auto_mode_btn.setStyleSheet(f"background: {BG_CARD}; color: {TEXT_PRIMARY};")
         self.auto_mode_btn.clicked.connect(self._auto_detect_mode)
         reg.addWidget(self.auto_mode_btn)
-        self.region_lbl = QLabel("Henüz seçilmedi")
+        self.region_lbl = QLabel("Not selected yet")
         self.region_lbl.setStyleSheet(f"color: {TEXT_DIM};")
         reg.addWidget(self.region_lbl); reg.addStretch(1)
         root.addLayout(reg)
 
-        self.preview = QLabel("Bölge seçildikten sonra önizleme burada görünür")
+        self.preview = QLabel("Preview will appear here once a region is selected")
         self.preview.setAlignment(Qt.AlignCenter)
         self.preview.setMinimumHeight(80)
         self.preview.setStyleSheet(
@@ -979,42 +979,42 @@ class MainWindow(QMainWindow):
 
         root.addWidget(self._sep())
 
-        # Kontrol
+        # Controls
         ctrl = QHBoxLayout()
-        self.start_btn = QPushButton("▶  BAŞLAT (F4)")
+        self.start_btn = QPushButton("▶  START (F4)")
         self.start_btn.setProperty("class", "success")
         self.start_btn.setStyleSheet(f"background: {SUCCESS}; color: {BG_DARK};")
         self.start_btn.clicked.connect(self._toggle_scan)
         ctrl.addWidget(self.start_btn)
 
-        once = QPushButton("✦  Tek (F3)")
+        once = QPushButton("✦  Once (F3)")
         once.clicked.connect(self._translate_once)
         ctrl.addWidget(once)
 
-        ctrl.addWidget(self._dim("Aralık:"))
+        ctrl.addWidget(self._dim("Interval:"))
         self.interval_spin = QDoubleSpinBox()
         self.interval_spin.setRange(0.3, 15.0); self.interval_spin.setSingleStep(0.1)
         self.interval_spin.setDecimals(1); self.interval_spin.setValue(self.interval)
         self.interval_spin.setFixedWidth(70)
         ctrl.addWidget(self.interval_spin)
-        ctrl.addWidget(self._dim("sn"))
+        ctrl.addWidget(self._dim("s"))
 
         self.overlay_cb = QCheckBox("Overlay"); self.overlay_cb.setChecked(self.show_overlay_opt)
         ctrl.addWidget(self.overlay_cb)
 
-        self.fast_cb = QCheckBox("Hızlı altyazı")
+        self.fast_cb = QCheckBox("Fast subtitle")
         self.fast_cb.setChecked(self.fast_mode)
-        self.fast_cb.setToolTip("0.4 sn aralık + agresif değişim algısı (RDR2, SM2)")
+        self.fast_cb.setToolTip("0.4 s interval + aggressive change detection (RDR2, SM2)")
         ctrl.addWidget(self.fast_cb)
         ctrl.addStretch(1)
         root.addLayout(ctrl)
 
         root.addWidget(self._sep())
 
-        # Sonuç
-        lab2 = QLabel("Son Çeviri"); lab2.setStyleSheet(f"color: {TEXT_DIM}; font: bold 9pt 'Consolas';")
+        # Result
+        lab2 = QLabel("Last Translation"); lab2.setStyleSheet(f"color: {TEXT_DIM}; font: bold 9pt 'Consolas';")
         root.addWidget(lab2)
-        self.result_lbl = QLabel("—")
+        self.result_lbl = QLabel("-")
         self.result_lbl.setWordWrap(True)
         self.result_lbl.setStyleSheet(
             f"background: {BG_CARD}; color: {ACCENT_GLOW}; padding: 10px 12px; "
@@ -1023,7 +1023,7 @@ class MainWindow(QMainWindow):
         self.result_lbl.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         root.addWidget(self.result_lbl)
 
-        # Log (katlanır)
+        # Log (collapsible)
         log_hdr = QHBoxLayout()
         self.log_arrow = QToolButton()
         self.log_arrow.setText("▶  Log")
@@ -1058,7 +1058,7 @@ class MainWindow(QMainWindow):
             self.log_box.show()
             self.log_arrow.setText("▼  Log")
 
-    # ── Shortcuts ───────────────────────────────────────────────────────────
+    # -- Shortcuts -----------------------------------------------------------
     def _bind_shortcuts(self):
         QShortcut(QKeySequence("F2"), self, activated=self._pick_region)
         QShortcut(QKeySequence("F3"), self, activated=self._translate_once)
@@ -1069,13 +1069,13 @@ class MainWindow(QMainWindow):
         if self.overlay and self.overlay.isVisible():
             self.overlay.hide()
 
-    # ── Config ──────────────────────────────────────────────────────────────
+    # -- Config --------------------------------------------------------------
     def _load_config(self):
         try:
             return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
         except Exception:
             pass
-        # Eski Game Translator (Qt) ayarlarını taşı
+        # Migrate old Game Translator (Qt) settings
         if LEGACY_CONFIG.exists():
             try:
                 data = json.loads(LEGACY_CONFIG.read_text(encoding="utf-8"))
@@ -1112,25 +1112,25 @@ class MainWindow(QMainWindow):
             pass
 
     def closeEvent(self, e):
-        # Tray'e küçültme: X'e basınca uygulama gizlenir, ÇIK için tray menüsü
+        # Minimize to tray: pressing X hides the app, use tray menu to QUIT
         if (self._tray and self._tray.isVisible()
                 and self.minimize_to_tray and not self._force_quit):
             e.ignore()
             self.hide()
             self._tray.showMessage(
                 "SubLens",
-                "Tray'e küçültüldü  ·  Çıkmak için tray menüsünü kullan",
+                "Minimized to tray  ·  Use the tray menu to quit",
                 QSystemTrayIcon.Information, 2500)
             return
-        # Gerçek çıkış
+        # Real exit
         self.running = False
         self._paused = False
         self._stop_evt.set()
         if hasattr(self, "_pause_timer"):
             self._pause_timer.stop()
         self._unregister_global_hotkeys()
-        # keyboard kütüphanesi non-daemon listener thread spawn eder;
-        # tüm hook'ları temizlemezsek process asılı kalır
+        # The keyboard library spawns a non-daemon listener thread;
+        # if we don't clean up all hooks, the process hangs.
         if HAS_KEYBOARD:
             try:
                 keyboard.unhook_all()
@@ -1143,12 +1143,12 @@ class MainWindow(QMainWindow):
             self._tray.hide()
             self._tray = None
         super().closeEvent(e)
-        # setQuitOnLastWindowClosed(False) açık olduğu için event loop
-        # kendiliğinden bitmez; explicit quit + safety-net os._exit
+        # With setQuitOnLastWindowClosed(False), the event loop won't end on
+        # its own - explicit quit + safety-net os._exit
         QApplication.instance().quit()
         QTimer.singleShot(800, lambda: os._exit(0))
 
-    # ── Motor geçişi ────────────────────────────────────────────────────────
+    # -- Engine switch -------------------------------------------------------
     def _switch_engine(self, key):
         prev = self.engine_key
         self.engine_key = key
@@ -1174,7 +1174,7 @@ class MainWindow(QMainWindow):
             f"({r[0]},{r[1]}) → ({r[2]},{r[3]})  [{r[2]-r[0]}×{r[3]-r[1]} px]")
         self.region_lbl.setStyleSheet(f"color: {SUCCESS};")
 
-    # ── Sinyal alıcılar ─────────────────────────────────────────────────────
+    # -- Signal receivers ----------------------------------------------------
     def _append_log(self, msg, tag):
         colors = {"ok": SUCCESS, "warn": WARNING, "err": ERROR,
                   "tr": ACCENT_GLOW, "dim": TEXT_DIM}
@@ -1198,7 +1198,7 @@ class MainWindow(QMainWindow):
             Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
     def _apply_models(self, models):
-        # Ayarlar penceresinde aktifse combobox'ı doldur
+        # If the combobox is active in the Settings window, populate it
         cb = getattr(self, "lm_combo", None)
         if cb is None:
             return
@@ -1209,10 +1209,10 @@ class MainWindow(QMainWindow):
                 cb.setCurrentText(models[0])
                 self.lm_model = models[0]
         except RuntimeError:
-            # Ayarlar penceresi kapatılmış → widget yok
+            # Settings window was closed -> widget is gone
             self.lm_combo = None
 
-    # ── Bölge seçimi ────────────────────────────────────────────────────────
+    # -- Region selection ----------------------------------------------------
     def _pick_region(self):
         if self._region_selector and self._region_selector.isVisible():
             return
@@ -1230,7 +1230,7 @@ class MainWindow(QMainWindow):
     def _on_region(self, r):
         self.region = r
         self._update_region_label()
-        self._append_log(f"Bölge: {r}", "ok")
+        self._append_log(f"Region: {r}", "ok")
         self._refresh_preview()
         self._update_start_state()
 
@@ -1244,7 +1244,7 @@ class MainWindow(QMainWindow):
             self.preview.setPixmap(qim)
             self.preview.setText("")
         except Exception as e:
-            self._append_log(f"Önizleme hatası: {e}", "warn")
+            self._append_log(f"Preview error: {e}", "warn")
 
     @staticmethod
     def _pil_to_qpixmap(img: Image.Image) -> QPixmap:
@@ -1254,65 +1254,65 @@ class MainWindow(QMainWindow):
         qim = QImage(data, img.width, img.height, QImage.Format_RGBA8888)
         return QPixmap.fromImage(qim.copy())
 
-    # ── Tek çeviri ──────────────────────────────────────────────────────────
+    # -- Single translation --------------------------------------------------
     def _translate_once(self):
         if not self.region:
-            QMessageBox.warning(self, "Uyarı", "Önce bir bölge seçin!")
+            QMessageBox.warning(self, "Warning", "Pick a region first!")
             return
         threading.Thread(target=self._do_once, daemon=True).start()
 
     def _do_once(self):
-        self.bridge.log.emit("Ekran okunuyor…", "dim")
+        self.bridge.log.emit("Reading screen...", "dim")
         text = self._ocr()
         if not text:
-            self.bridge.log.emit("Metin bulunamadı.", "warn")
+            self.bridge.log.emit("No text found.", "warn")
             return
-        self.bridge.log.emit(f"OCR → {text[:70]}{'…' if len(text) > 70 else ''}", "dim")
+        self.bridge.log.emit(f"OCR -> {text[:70]}{'...' if len(text) > 70 else ''}", "dim")
         try:
             tr = self._translate(text)
             self.bridge.result.emit(tr)
-            self.bridge.log.emit(f"► {tr}", "tr")
+            self.bridge.log.emit(f"> {tr}", "tr")
             if self.overlay_cb.isChecked():
                 self.bridge.show_overlay.emit(tr)
         except Exception as e:
-            self.bridge.log.emit(f"Çeviri hatası: {e}", "err")
+            self.bridge.log.emit(f"Translation error: {e}", "err")
 
-    # ── Tarama döngüsü ──────────────────────────────────────────────────────
+    # -- Scan loop -----------------------------------------------------------
     def _toggle_scan(self):
         if self.running:
             self.running = False
             self._paused = False
             self._stop_evt.set()
-            self.start_btn.setText("▶  BAŞLAT (F4)")
+            self.start_btn.setText("▶  START (F4)")
             self.start_btn.setStyleSheet(f"background: {SUCCESS}; color: {BG_DARK};")
-            self._append_log("Tarama durduruldu.", "warn")
+            self._append_log("Scanning stopped.", "warn")
             if self._tray:
                 self._tray.setIcon(make_tray_icon(False))
         else:
             if not self.region:
-                QMessageBox.warning(self, "Uyarı", "Önce bir bölge seçin!")
+                QMessageBox.warning(self, "Warning", "Pick a region first!")
                 return
             self.running = True
             self._paused = False
             self._stop_evt.clear()
             self.last_text = ""
             self.last_hash = ""
-            self.start_btn.setText("■  DURDUR (F4)")
+            self.start_btn.setText("■  STOP (F4)")
             self.start_btn.setStyleSheet(f"background: {WARNING}; color: {BG_DARK};")
 
-            # Auto-pause hedef pencere: şu an aktif ve bizim değilse hedef yap
+            # Auto-pause target window: if the active window is not ours, target it
             self._target_hwnd = 0
             if self.auto_pause_on and HAS_WIN32:
                 hwnd, pid, title = get_foreground_info()
                 if pid and pid != self._self_pid:
                     self._target_hwnd = hwnd
-                    self._append_log(f"Auto-pause hedef: {title[:40] or '(başlıksız)'}", "dim")
+                    self._append_log(f"Auto-pause target: {title[:40] or '(untitled)'}", "dim")
                 else:
                     self._append_log(
-                        "Auto-pause: ilk Alt-Tab ile oyun penceresi hedef alınacak", "dim")
+                        "Auto-pause: the first Alt-Tab will set the game window as target", "dim")
 
             self._append_log(
-                f"Tarama başladı  ·  {self.ENGINES[self.engine_key].name}", "ok")
+                f"Scanning started  ·  {self.ENGINES[self.engine_key].name}", "ok")
             if self._tray:
                 self._tray.setIcon(make_tray_icon(True))
             threading.Thread(target=self._scan_loop, daemon=True).start()
@@ -1325,7 +1325,7 @@ class MainWindow(QMainWindow):
                 continue
             text = self._ocr()
             if text:
-                # Normalleştirilmiş hash ile hızlı erken çıkış
+                # Fast early-out via a normalized hash
                 norm = re.sub(r"\W+", "", text.lower())
                 h = hashlib.md5(norm.encode("utf-8")).hexdigest()[:12]
                 fast = self.fast_cb.isChecked()
@@ -1337,15 +1337,15 @@ class MainWindow(QMainWindow):
                     self.last_text = text
                     self.last_hash = h
                     self.bridge.log.emit(
-                        f"Yeni → {text[:55]}{'…' if len(text) > 55 else ''}", "dim")
+                        f"New -> {text[:55]}{'...' if len(text) > 55 else ''}", "dim")
                     try:
                         tr = self._translate(text)
                         self.bridge.result.emit(tr)
-                        self.bridge.log.emit(f"► {tr}", "tr")
+                        self.bridge.log.emit(f"> {tr}", "tr")
                         if self.overlay_cb.isChecked():
                             self.bridge.show_overlay.emit(tr)
                     except Exception as e:
-                        self.bridge.log.emit(f"Hata: {e}", "err")
+                        self.bridge.log.emit(f"Error: {e}", "err")
             try:
                 base = float(self.interval_spin.value())
             except Exception:
@@ -1354,7 +1354,7 @@ class MainWindow(QMainWindow):
             if self._stop_evt.wait(max(0.1, wait)):
                 break
 
-    # ── Çeviri (önbellekli + glossary) ──────────────────────────────────────
+    # -- Translation (cached + glossary) -------------------------------------
     def _translate(self, text):
         cache_key = f"{self.engine_key}|{self.src_combo.currentText()}|{self.tgt_combo.currentText()}|{text}"
         hit = self._cache.get(cache_key)
@@ -1367,7 +1367,7 @@ class MainWindow(QMainWindow):
         elif self.engine_key == "deepl":
             eng.api_key = self.deepl_key
 
-        # Glossary: terimleri sentinel ile koru
+        # Glossary: protect terms with sentinels
         protected, placeholders = protect_terms(text, self.glossary)
         out = eng.translate(protected, self.src_combo.currentText(),
                             self.tgt_combo.currentText(), self.ctx)
@@ -1376,19 +1376,19 @@ class MainWindow(QMainWindow):
         self._cache.put(cache_key, out)
         return out
 
-    # ── OCR ─────────────────────────────────────────────────────────────────
+    # -- OCR -----------------------------------------------------------------
     def _ocr(self) -> str:
         if not self.region:
             return ""
         try:
             raw = GRABBER.grab(self.region)
         except Exception as e:
-            self.bridge.log.emit(f"Ekran yakalanamadı: {e}", "err")
+            self.bridge.log.emit(f"Screen capture failed: {e}", "err")
             return ""
 
         proc = preprocess(raw, self.ocr_scale, self.ocr_mode)
         psm_val = self.ocr_psm.split(" ")[0]
-        # tessedit_char_blacklist: yaygın ikon karakterlerini engelle
+        # tessedit_char_blacklist: block common icon characters
         config = (f"--oem 3 --psm {psm_val} -c preserve_interword_spaces=1 "
                   f"-c tessedit_char_blacklist=©®™€¥§¶•")
         lang = OCR_LANG_MAP.get(self.src_combo.currentText(), "eng")
@@ -1401,7 +1401,7 @@ class MainWindow(QMainWindow):
             es = str(e).lower()
             if lang != "eng" and any(s in es for s in ("language", "not loaded", "failed loading", "data file")):
                 self.bridge.log.emit(
-                    f"'{lang}' Tesseract dil paketi bulunamadı, eng'e düşülüyor", "warn")
+                    f"Tesseract language pack '{lang}' not found, falling back to eng", "warn")
                 data = pytesseract.image_to_data(
                     proc, lang="eng", config=config,
                     output_type=pytesseract.Output.DICT)
@@ -1461,7 +1461,7 @@ class MainWindow(QMainWindow):
             out.append(text)
         return "\n".join(out)
 
-    # ── Overlay göster ──────────────────────────────────────────────────────
+    # -- Show overlay --------------------------------------------------------
     def _show_overlay(self, text):
         if self.overlay is None:
             self.overlay = OverlayWindow(self.engine_key)
@@ -1469,44 +1469,44 @@ class MainWindow(QMainWindow):
             self.overlay.set_engine(self.engine_key)
         self.overlay.set_text(text, self.region)
 
-    # ── Yardım kartı ────────────────────────────────────────────────────────
+    # -- Help card -----------------------------------------------------------
     def _help_text(self):
         return (
-            "<b style='color:#9d8fff;'>3 adımda kullanım:</b><br>"
-            "&nbsp;&nbsp;<b style='color:#7c6af7;'>1)</b> Motor seç (Google API'siz çalışır), kaynak/hedef dilini ayarla.<br>"
-            "&nbsp;&nbsp;<b style='color:#7c6af7;'>2)</b> <b>📐 Bölge Seç</b> ile altyazı/diyalog kutusunu kapsayacak alanı sürükle. "
-            "Çok dar olmasın; etrafından ~10px boşluk bırak.<br>"
-            "&nbsp;&nbsp;<b style='color:#7c6af7;'>3)</b> <b>✨ Mod Bul</b> ile en iyi OCR modunu otomatik seçtir, sonra <b>▶ BAŞLAT</b>.<br><br>"
-            "<b style='color:#9d8fff;'>İpuçları:</b><br>"
-            "&nbsp;&nbsp;•  <b>Hızlı altyazı</b> kutusunu RDR2/SM2 gibi oyunlarda aç (aralık 0.4s, agresif değişim algısı).<br>"
-            "&nbsp;&nbsp;•  Parlak/karmaşık arka planda mod <b>Stroke</b> veya <b>Equalize</b> dene.<br>"
-            "&nbsp;&nbsp;•  <b>Glossary</b> (Ayarlar): özel isimleri korur — <code>Dutch=Dutch</code>, <code>Arthur=Arthur</code>.<br>"
-            "&nbsp;&nbsp;•  <b>Global kısayollar</b> (Ayarlar): Ctrl+Alt+R/T/G ile oyun tam ekrandayken çalışır.<br>"
-            "&nbsp;&nbsp;•  <b>Auto-pause</b>: Alt-Tab yapınca tarama otomatik durur, dönünce devam eder.<br>"
-            "&nbsp;&nbsp;•  Tray'e küçültme ile X tuşu uygulamayı kapatmaz, gizler."
+            "<b style='color:#9d8fff;'>3 steps to get started:</b><br>"
+            "&nbsp;&nbsp;<b style='color:#7c6af7;'>1)</b> Pick an engine (Google works without an API key), set source/target languages.<br>"
+            "&nbsp;&nbsp;<b style='color:#7c6af7;'>2)</b> Use <b>\U0001f4d0 Pick Region</b> to drag a box around the subtitle/dialog area. "
+            "Don't make it too tight - leave ~10px of padding.<br>"
+            "&nbsp;&nbsp;<b style='color:#7c6af7;'>3)</b> Click <b>✨ Find Mode</b> to auto-detect the best OCR mode, then <b>▶ START</b>.<br><br>"
+            "<b style='color:#9d8fff;'>Tips:</b><br>"
+            "&nbsp;&nbsp;•  Enable <b>Fast subtitle</b> for games like RDR2/SM2 (0.4s interval, aggressive change detection).<br>"
+            "&nbsp;&nbsp;•  Try the <b>Stroke</b> or <b>Equalize</b> mode for bright/complex backgrounds.<br>"
+            "&nbsp;&nbsp;•  <b>Glossary</b> (Settings): protects proper names - <code>Dutch=Dutch</code>, <code>Arthur=Arthur</code>.<br>"
+            "&nbsp;&nbsp;•  <b>Global shortcuts</b> (Settings): Ctrl+Alt+R/T/G work while the game is fullscreen.<br>"
+            "&nbsp;&nbsp;•  <b>Auto-pause</b>: scanning stops automatically when you Alt-Tab away and resumes when you return.<br>"
+            "&nbsp;&nbsp;•  With minimize-to-tray, the X button hides the app instead of closing it."
         )
 
     def _toggle_help(self):
         if self.help_card.isVisible():
             self.help_card.hide()
-            self.help_toggle.setText("💡  Hızlı başlangıç (göster)")
+            self.help_toggle.setText("\U0001f4a1  Quick start (show)")
         else:
             self.help_card.show()
-            self.help_toggle.setText("💡  Hızlı başlangıç (gizle)")
+            self.help_toggle.setText("\U0001f4a1  Quick start (hide)")
 
-    # ── Otomatik mod algılama ───────────────────────────────────────────────
+    # -- Automatic mode detection --------------------------------------------
     def _auto_detect_mode(self):
         if not self.region:
-            QMessageBox.warning(self, "Uyarı", "Önce bölge seç!")
+            QMessageBox.warning(self, "Warning", "Pick a region first!")
             return
-        self.bridge.status.emit("● Modlar deneniyor…", WARNING)
+        self.bridge.status.emit("● Trying modes...", WARNING)
         threading.Thread(target=self._auto_detect_worker, daemon=True).start()
 
     def _auto_detect_worker(self):
         try:
             raw = GRABBER.grab(self.region)
         except Exception as e:
-            self.bridge.status.emit(f"● Yakalama hatası: {e}", ERROR)
+            self.bridge.status.emit(f"● Capture error: {e}", ERROR)
             return
 
         lang = OCR_LANG_MAP.get(self.src_combo.currentText(), "eng")
@@ -1522,7 +1522,7 @@ class MainWindow(QMainWindow):
                     proc, lang=lang, config=config,
                     output_type=pytesseract.Output.DICT)
             except Exception as e:
-                self.bridge.log.emit(f"[{mode_label}] hata: {e}", "warn")
+                self.bridge.log.emit(f"[{mode_label}] error: {e}", "warn")
                 continue
 
             score, word_count, sample = 0.0, 0, []
@@ -1540,25 +1540,25 @@ class MainWindow(QMainWindow):
                 word_count += 1
                 if len(sample) < 6:
                     sample.append(w)
-            # Sadece çok az kelime → muhtemelen gürültü
+            # Too few words -> probably noise
             if word_count < 2:
                 continue
             self.bridge.log.emit(
-                f"[{mode_label}] {word_count} kelime · skor {int(score)} · "
+                f"[{mode_label}] {word_count} words · score {int(score)} · "
                 f"{' '.join(sample)[:50]}", "dim")
             if best is None or score > best[0]:
                 best = (score, mode_key, mode_label)
 
         if best is None:
-            self.bridge.status.emit("● Hiçbir modda metin bulunamadı", ERROR)
+            self.bridge.status.emit("● No text found in any mode", ERROR)
             return
 
         self.ocr_mode = best[1]
-        self.bridge.status.emit(f"● En iyi mod: {best[2]} (skor {int(best[0])})", SUCCESS)
-        self.bridge.log.emit(f"OCR modu → {best[2]}", "ok")
+        self.bridge.status.emit(f"● Best mode: {best[2]} (score {int(best[0])})", SUCCESS)
+        self.bridge.log.emit(f"OCR mode -> {best[2]}", "ok")
         self._save_config()
 
-    # ── Sistem tepsisi ──────────────────────────────────────────────────────
+    # -- System tray ---------------------------------------------------------
     def _setup_tray(self):
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return
@@ -1566,13 +1566,13 @@ class MainWindow(QMainWindow):
         self._tray.setToolTip("SubLens")
 
         menu = QMenu()
-        a_show = QAction("Göster / Gizle", self)
+        a_show = QAction("Show / Hide", self)
         a_show.triggered.connect(self._toggle_window_visible)
-        a_scan = QAction("Başlat / Durdur (tarama)", self)
+        a_scan = QAction("Start / Stop (scanning)", self)
         a_scan.triggered.connect(self._toggle_scan)
-        a_hide_ov = QAction("Overlay gizle", self)
+        a_hide_ov = QAction("Hide overlay", self)
         a_hide_ov.triggered.connect(self._hide_overlay)
-        a_quit = QAction("Çık", self)
+        a_quit = QAction("Quit", self)
         a_quit.triggered.connect(self._real_quit)
 
         menu.addAction(a_show)
@@ -1600,15 +1600,15 @@ class MainWindow(QMainWindow):
         self._force_quit = True
         self.close()
 
-    # ── Global hotkey ───────────────────────────────────────────────────────
+    # -- Global hotkeys ------------------------------------------------------
     def _register_global_hotkeys(self):
         if not HAS_KEYBOARD:
             self._append_log(
-                "Global kısayol için 'keyboard' kurulu değil  ·  pip install keyboard", "warn")
+                "Global shortcuts need 'keyboard'  ·  pip install keyboard", "warn")
             return
         self._unregister_global_hotkeys()
         try:
-            # F2/F3/F4 + Ctrl+Alt alternatifleri (oyun çakışmasında yedek)
+            # F2/F3/F4 + Ctrl+Alt alternatives (fallback when games steal the keys)
             self._registered_hotkeys = [
                 keyboard.add_hotkey("f2", lambda: self.bridge.trigger_pick.emit()),
                 keyboard.add_hotkey("f3", lambda: self.bridge.trigger_once.emit()),
@@ -1619,10 +1619,10 @@ class MainWindow(QMainWindow):
                 keyboard.add_hotkey("ctrl+alt+h", lambda: self.bridge.trigger_hide_overlay.emit()),
             ]
             self._append_log(
-                "Global kısayollar: F2/F3/F4  +  Ctrl+Alt+R/T/G/H  (oyun tam ekrandayken çalışır)",
+                "Global shortcuts: F2/F3/F4  +  Ctrl+Alt+R/T/G/H  (work while the game is fullscreen)",
                 "ok")
         except Exception as e:
-            self._append_log(f"Global kısayol kaydı başarısız: {e}", "err")
+            self._append_log(f"Failed to register global shortcuts: {e}", "err")
 
     def _unregister_global_hotkeys(self):
         if not HAS_KEYBOARD:
@@ -1634,39 +1634,39 @@ class MainWindow(QMainWindow):
                 pass
         self._registered_hotkeys = []
 
-    # ── Auto-pause ──────────────────────────────────────────────────────────
+    # -- Auto-pause ----------------------------------------------------------
     def _check_auto_pause(self):
         if not (self.running and self.auto_pause_on and HAS_WIN32):
             return
         hwnd, pid, _title = get_foreground_info()
         if not hwnd:
             return
-        # Bizim sürecimize odaklıysa hedef kabul etme; ama duraklatma da yapma
-        # (kullanıcı Ayarlar'a bakıyor olabilir)
+        # If our own process is focused, don't accept it as target but also
+        # don't pause (the user may be looking at Settings)
         if pid == self._self_pid:
             return
-        # Hedef yoksa, ilk gördüğümüz dış pencereyi hedef yap
+        # No target yet -> set the first external window we see
         if self._target_hwnd == 0:
             self._target_hwnd = hwnd
             self._append_log(
-                f"Auto-pause hedef alındı: {_title[:40] or '(başlıksız)'}", "dim")
+                f"Auto-pause target acquired: {_title[:40] or '(untitled)'}", "dim")
             if self._paused:
                 self._paused = False
             return
-        # Hedef pencere ön planda mı?
+        # Is the target window in the foreground?
         if hwnd == self._target_hwnd:
             if self._paused:
                 self._paused = False
-                self._append_log("Auto-pause: devam", "ok")
+                self._append_log("Auto-pause: resumed", "ok")
         else:
             if not self._paused:
                 self._paused = True
-                self._append_log(f"Auto-pause: duraklatıldı ({_title[:30]})", "warn")
+                self._append_log(f"Auto-pause: paused ({_title[:30]})", "warn")
 
-    # ── Test motoru ─────────────────────────────────────────────────────────
+    # -- Test engine ---------------------------------------------------------
     def _test_engine(self, key):
         eng = self.ENGINES[key]
-        self.bridge.status.emit(f"● {eng.name} test ediliyor…", WARNING)
+        self.bridge.status.emit(f"● Testing {eng.name}...", WARNING)
 
         def _run():
             try:
@@ -1675,7 +1675,7 @@ class MainWindow(QMainWindow):
                     eng.model = self.lm_model
                     models = eng.test()
                     self.bridge.models.emit(models)
-                    msg = f"Bağlandı  ·  {len(models)} model"
+                    msg = f"Connected  ·  {len(models)} models"
                 elif key == "deepl":
                     eng.api_key = self.deepl_key
                     msg = eng.test()
@@ -1684,15 +1684,15 @@ class MainWindow(QMainWindow):
                 self.bridge.status.emit(f"● {msg}", SUCCESS)
                 self.bridge.log.emit(f"[{eng.name}] {msg}", "ok")
             except Exception as e:
-                self.bridge.status.emit(f"● Hata: {e}", ERROR)
-                self.bridge.log.emit(f"[{eng.name}] Hata: {e}", "err")
+                self.bridge.status.emit(f"● Error: {e}", ERROR)
+                self.bridge.log.emit(f"[{eng.name}] Error: {e}", "err")
 
         threading.Thread(target=_run, daemon=True).start()
 
-    # ── Ayarlar penceresi ───────────────────────────────────────────────────
+    # -- Settings window -----------------------------------------------------
     def _open_settings(self):
         dlg = QDialog(self)
-        dlg.setWindowTitle("Ayarlar")
+        dlg.setWindowTitle("Settings")
         dlg.resize(520, 720)
         dlg.setStyleSheet(self.styleSheet())
 
@@ -1713,12 +1713,12 @@ class MainWindow(QMainWindow):
             v.addWidget(wr)
 
         # LM Studio
-        section("LM STUDIO  (yerel AI)")
+        section("LM STUDIO  (local AI)")
         url_row = QHBoxLayout()
         url_row.addWidget(self._dim("URL:"))
         url_edit = QLineEdit(self.lm_url); url_edit.setMinimumWidth(220)
         url_row.addWidget(url_edit, 1)
-        url_test = QPushButton("Bağlan")
+        url_test = QPushButton("Connect")
         url_test.setStyleSheet(f"background: {ENGINE_ACCENT['lmstudio']}; color: {BG_DARK};")
         url_row.addWidget(url_test)
         v.addLayout(url_row)
@@ -1732,7 +1732,7 @@ class MainWindow(QMainWindow):
         v.addLayout(model_row)
 
         # DeepL
-        section("DEEPL FREE  (500k karakter/ay)")
+        section("DEEPL FREE  (500k characters/month)")
         deepl_row = QHBoxLayout()
         deepl_row.addWidget(self._dim("API Key:"))
         key_edit = QLineEdit(self.deepl_key); key_edit.setEchoMode(QLineEdit.Password)
@@ -1741,7 +1741,7 @@ class MainWindow(QMainWindow):
         deepl_test.setStyleSheet(f"background: {ENGINE_ACCENT['deepl']}; color: {BG_DARK};")
         deepl_row.addWidget(deepl_test)
         v.addLayout(deepl_row)
-        v.addWidget(self._dim("deepl.com → API Free plan → ücretsiz kayıt yeterli"))
+        v.addWidget(self._dim("deepl.com -> API Free plan -> free signup is enough"))
 
         # Google
         section("GOOGLE TRANSLATE")
@@ -1749,21 +1749,21 @@ class MainWindow(QMainWindow):
         gtest = QPushButton("Test")
         gtest.setStyleSheet(f"background: {ENGINE_ACCENT['google']}; color: {BG_DARK};")
         google_row.addWidget(gtest)
-        google_row.addWidget(self._dim("  Gayri resmi endpoint, zaman zaman bloklanabilir"))
+        google_row.addWidget(self._dim("  Unofficial endpoint, may be blocked at times"))
         google_row.addStretch(1)
         v.addLayout(google_row)
 
-        # Bağlam
-        section("OYUN BAĞLAMI  (opsiyonel)")
-        v.addWidget(self._dim("Örn: 'Wild West, 1899, kovboy diyaloğu'"))
+        # Context
+        section("GAME CONTEXT  (optional)")
+        v.addWidget(self._dim("E.g.: 'Wild West, 1899, cowboy dialogue'"))
         ctx_edit = QLineEdit(self.ctx)
         v.addWidget(ctx_edit)
 
         # OCR
         section("OCR")
-        # ölçek
+        # scale
         scale_row = QHBoxLayout()
-        scale_row.addWidget(self._dim("Büyütme:"))
+        scale_row.addWidget(self._dim("Upscale:"))
         scale_grp = QButtonGroup(dlg)
         for val in (2, 3, 4):
             rb = QRadioButton(f"{val}x")
@@ -1774,9 +1774,9 @@ class MainWindow(QMainWindow):
         scale_row.addStretch(1)
         v.addLayout(scale_row)
 
-        # mod
+        # mode
         mode_row = QGridLayout()
-        mode_row.addWidget(self._dim("Metin:"), 0, 0)
+        mode_row.addWidget(self._dim("Text:"), 0, 0)
         mode_grp = QButtonGroup(dlg)
         for idx, (val, lbl) in enumerate(OCR_MODES):
             rb = QRadioButton(lbl)
@@ -1796,14 +1796,14 @@ class MainWindow(QMainWindow):
         psm_row.addWidget(psm_combo, 1)
         v.addLayout(psm_row)
 
-        # ── Glossary (terim koruma) ──
-        section("GLOSSARY  (özel isim / terim koruma)")
+        # -- Glossary (term protection) --
+        section("GLOSSARY  (proper-name / term protection)")
         v.addWidget(self._dim(
-            "Her satıra bir kural:  kaynak=hedef   (yalnız 'kaynak' yazarsan çevrilmez)\n"
-            "Örn:  Dutch=Dutch     Arthur=Arthur     Saint Denis=Saint Denis     # yorum"))
+            "One rule per line:  source=target   (write only 'source' to skip translation)\n"
+            "E.g.:  Dutch=Dutch     Arthur=Arthur     Saint Denis=Saint Denis     # comment"))
         glossary_edit = QPlainTextEdit(self.glossary_text)
         glossary_edit.setPlaceholderText(
-            "Arthur=Arthur\nDutch=Dutch\nVan der Linde=Van der Linde\n# RDR2 örnek\n")
+            "Arthur=Arthur\nDutch=Dutch\nVan der Linde=Van der Linde\n# RDR2 example\n")
         glossary_edit.setMinimumHeight(120)
         glossary_edit.setStyleSheet(
             f"QPlainTextEdit {{ background: {BG_CARD}; color: {TEXT_PRIMARY}; "
@@ -1811,46 +1811,46 @@ class MainWindow(QMainWindow):
             f"font-family: 'Consolas'; font-size: 10pt; }}")
         v.addWidget(glossary_edit)
 
-        # ── Çalışma tercihleri ──
-        section("ÇALIŞMA")
+        # -- Runtime preferences --
+        section("RUNTIME")
         gh_cb = QCheckBox(
-            "Global kısayollar (Ctrl+Alt+R / T / G / H) — oyun tam ekrandayken çalışır")
+            "Global shortcuts (Ctrl+Alt+R / T / G / H) - work while the game is fullscreen")
         gh_cb.setChecked(self.global_hotkeys_on)
         if not HAS_KEYBOARD:
             gh_cb.setEnabled(False)
-            gh_cb.setText(gh_cb.text() + "  [keyboard yüklü değil]")
+            gh_cb.setText(gh_cb.text() + "  [keyboard not installed]")
         v.addWidget(gh_cb)
 
         ap_cb = QCheckBox(
-            "Auto-pause — oyun penceresi pasifleşince taramayı duraklat")
+            "Auto-pause - pause scanning when the game window loses focus")
         ap_cb.setChecked(self.auto_pause_on)
         if not HAS_WIN32:
             ap_cb.setEnabled(False)
-            ap_cb.setText(ap_cb.text() + "  [pywin32 yüklü değil]")
+            ap_cb.setText(ap_cb.text() + "  [pywin32 not installed]")
         v.addWidget(ap_cb)
 
-        tr_cb = QCheckBox("Kapatınca tray'e küçült (gerçekten çıkmak için tray menüsünü kullan)")
+        tr_cb = QCheckBox("Minimize to tray on close (use the tray menu to actually quit)")
         tr_cb.setChecked(self.minimize_to_tray)
         v.addWidget(tr_cb)
 
         v.addStretch(1)
 
-        # Alt buton barı
+        # Bottom button bar
         outer = QVBoxLayout(dlg); outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(scroll, 1)
         sep = QFrame(); sep.setStyleSheet(f"background: {BORDER}; max-height: 1px;")
         outer.addWidget(sep)
         btn_row = QHBoxLayout(); btn_row.setContentsMargins(20, 10, 20, 12)
         btn_row.addStretch(1)
-        cancel = QPushButton("İptal")
+        cancel = QPushButton("Cancel")
         cancel.setStyleSheet(f"background: {BG_CARD}; color: {TEXT_PRIMARY};")
         cancel.clicked.connect(dlg.reject)
-        save = QPushButton("✓  Kaydet")
+        save = QPushButton("✓  Save")
         save.setStyleSheet(f"background: {SUCCESS}; color: {BG_DARK};")
         btn_row.addWidget(cancel); btn_row.addWidget(save)
         outer.addLayout(btn_row)
 
-        # Bağlamalar
+        # Bindings
         url_test.clicked.connect(lambda: (
             setattr(self, "lm_url", url_edit.text().strip()),
             setattr(self, "lm_model", self.lm_combo.currentText().strip()),
@@ -1874,9 +1874,9 @@ class MainWindow(QMainWindow):
             # Glossary
             self.glossary_text = glossary_edit.toPlainText()
             self.glossary = parse_glossary(self.glossary_text)
-            self._cache = LRUCache(200)  # önbelleği temizle (glossary değişmiş olabilir)
+            self._cache = LRUCache(200)  # clear cache (glossary may have changed)
 
-            # Çalışma tercihleri
+            # Runtime preferences
             prev_gh = self.global_hotkeys_on
             prev_ap = self.auto_pause_on
             self.global_hotkeys_on = gh_cb.isChecked()
@@ -1887,18 +1887,18 @@ class MainWindow(QMainWindow):
                 self._register_global_hotkeys()
             elif prev_gh and not self.global_hotkeys_on:
                 self._unregister_global_hotkeys()
-                self._append_log("Global kısayollar kapatıldı", "dim")
+                self._append_log("Global shortcuts disabled", "dim")
 
             if self.auto_pause_on and not prev_ap:
                 self._pause_timer.start()
-                self._append_log("Auto-pause açık", "ok")
+                self._append_log("Auto-pause enabled", "ok")
             elif prev_ap and not self.auto_pause_on:
                 self._pause_timer.stop()
                 self._paused = False
                 self._target_hwnd = 0
 
             self._save_config()
-            self.bridge.status.emit("● Ayarlar kaydedildi", SUCCESS)
+            self.bridge.status.emit("● Settings saved", SUCCESS)
             dlg.accept()
             self._refresh_preview()
 
@@ -1910,15 +1910,15 @@ class MainWindow(QMainWindow):
 
         dlg.exec()
 
-    # ── Bilgi penceresi ─────────────────────────────────────────────────────
+    # -- Info window ---------------------------------------------------------
     def _open_info(self):
         dlg = QDialog(self)
-        dlg.setWindowTitle("Bilgi  ·  SubLens")
+        dlg.setWindowTitle("Info  ·  SubLens")
         dlg.resize(720, 640)
         dlg.setStyleSheet(self.styleSheet())
 
         v = QVBoxLayout(dlg); v.setContentsMargins(0, 0, 0, 0); v.setSpacing(0)
-        hdr = QLabel("ⓘ  KULLANIM KILAVUZU")
+        hdr = QLabel("ⓘ  USER GUIDE")
         hdr.setStyleSheet(f"color: {ACCENT}; font: bold 14pt 'Segoe UI'; padding: 14px 20px;")
         v.addWidget(hdr)
         bar = QFrame(); bar.setStyleSheet(f"background: {ACCENT}; max-height: 2px;")
@@ -1941,92 +1941,92 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def _builtin_guide(self) -> str:
-        return """# SubLens — Kullanım kılavuzu
+        return """# SubLens - User guide
 
-## Hızlı başlangıç (3 adım)
+## Quick start (3 steps)
 
-1. **Motor seç.** Google API'siz çalışır, hızlı kurulum. DeepL daha kaliteli ama API key ister. LM Studio yerel çalışır (offline).
-2. **📐 Bölge Seç (F2)** ile altyazı/diyalog kutusunu kapsayan dikdörtgeni sürükle. Etrafından **~10 px boşluk** bırak (Tesseract kenarda zorlanır).
-3. **✨ Mod Bul** ile en iyi OCR modunu otomatik seçtir, sonra **▶ BAŞLAT (F4)**.
+1. **Pick an engine.** Google works without an API key and is quick to set up. DeepL is higher quality but needs an API key. LM Studio runs locally (offline).
+2. **Pick Region (F2)** to drag a rectangle around the subtitle/dialog box. Leave **~10 px of padding** around the text (Tesseract struggles right at the edges).
+3. **Find Mode** to auto-detect the best OCR mode, then **START (F4)**.
 
-## Hangi mod ne işe yarar?
+## What does each mode do?
 
-| Mod | Ne zaman? |
+| Mode | When to use |
 |---|---|
-| **Otomatik** | Net altyazı, tek tip arka plan |
-| **Açık yazı / koyu zemin** | Klasik siyah arka plan + beyaz yazı |
-| **Koyu yazı / açık zemin** | Menüler, beyaz arka plan |
-| **Altyazı (top-hat)** | Yarı saydam altyazı kutusu üzerinde değişken arka plan |
-| **Konturlu (Stroke)** | RDR2, Spider-Man 2 — yazının etrafında siyah kontur var |
-| **Karmaşık arka plan (Equalize)** | Parlak, dalgalı arka plan; gökyüzü, alev vs. |
+| **Automatic** | Clear subtitles, uniform background |
+| **Light text / dark background** | Classic black background + white text |
+| **Dark text / light background** | Menus, white backgrounds |
+| **Subtitle (top-hat)** | Semi-transparent subtitle box over a varying background |
+| **Outlined (Stroke)** | RDR2, Spider-Man 2 - text with a black outline |
+| **Complex background (Equalize)** | Bright, busy backgrounds; sky, fire, etc. |
 
-Bilemiyorsan **✨ Mod Bul**'a tıkla; 6 modu deneyip en yüksek OCR güveni veren modu otomatik seçer.
+If you're not sure, click **Find Mode**; it tries 6 modes and picks the one with the highest OCR confidence.
 
-## Kısayollar
+## Shortcuts
 
-**Pencere odaktayken (her zaman çalışır):**
-- `F2` Bölge seç · `F3` Tek çeviri · `F4` Başlat/Durdur · `ESC` Overlay gizle
+**When the window is focused (always works):**
+- `F2` Pick region · `F3` Translate once · `F4` Start/Stop · `ESC` Hide overlay
 
-**Global (oyun tam ekrandayken — Ayarlar'da açık olmalı):**
-- `Ctrl+Alt+R` Bölge · `Ctrl+Alt+T` Tek · `Ctrl+Alt+G` Başlat/Durdur · `Ctrl+Alt+H` Overlay gizle
+**Global (while the game is fullscreen - must be enabled in Settings):**
+- `Ctrl+Alt+R` Region · `Ctrl+Alt+T` Once · `Ctrl+Alt+G` Start/Stop · `Ctrl+Alt+H` Hide overlay
 
-## Glossary (terim koruma)
+## Glossary (term protection)
 
-Ayarlar → GLOSSARY. Her satır bir kural:
+Settings -> GLOSSARY. One rule per line:
 ```
 Arthur=Arthur
 Dutch=Dutch
 Saint Denis=Saint Denis
 Van der Linde=Van der Linde
-# yorum satırı
+# comment line
 ```
-Kural **çeviriden önce** kaynak metinde terimi gizler, çeviri sonrası geri yazar. Böylece "Dutch" → "Hollandalı" gibi yanlışlar kaybolur. Sadece `kaynak` yazarsan o terim hiç çevrilmez.
+A rule **hides the term** in the source text before translation and writes it back afterwards. This avoids mistakes like "Dutch" -> "Hollander". If you write only `source`, that term won't be translated at all.
 
 ## Auto-pause
 
-Açıksa: tarama başladığında **ilk dış pencere** (oyun) hedef alınır. Alt-Tab ile başka uygulamaya geçince OCR/API çağrısı durur; oyuna dönünce devam eder.
-- Hedefi değiştirmek için: taramayı durdur → oyuna geç → tekrar başlat.
+When enabled: as scanning starts, the **first external window** (the game) is taken as the target. OCR/API calls pause when you Alt-Tab to another app, and resume when you return.
+- To change the target: stop scanning -> focus the game -> start again.
 
-## Tray (sistem tepsisi)
+## Tray (system tray)
 
-- Pencere X'ine basınca uygulama gizlenir, tray'e iner (ayarda kapatılabilir).
-- Tray ikonu **yeşil** = tarama aktif, **mor** = bekliyor.
-- Tray menüsü: Göster/Gizle · Başlat/Durdur · Overlay gizle · **Çık**.
+- The X button hides the app to the tray instead of closing it (can be turned off in settings).
+- Tray icon **green** = scanning, **purple** = idle.
+- Tray menu: Show/Hide · Start/Stop · Hide overlay · **Quit**.
 
-## Hızlı altyazı modu
+## Fast subtitle mode
 
-Anaşekran alttaki kutu. Aralığı 0.4 sn'ye düşürür ve değişim algı eşiğini gevşetir. RDR2, Spider-Man 2, GTA gibi hızlı diyaloglu oyunlar için. CPU ve API kullanımını artırır.
+Checkbox on the main screen. Drops the interval to 0.4 s and loosens the change-detection threshold. Useful for fast-dialog games like RDR2, Spider-Man 2, GTA. Increases CPU and API usage.
 
-## Sorun giderme
+## Troubleshooting
 
-- **OCR boş** → Bölgeyi biraz büyüt, **✨ Mod Bul** dene, OCR büyütmeyi 4x yap.
-- **Emoji/ikon karışıyor** → Otomatik elenir; sürekli sorun varsa bölgeyi metnin tam altıyla sınırla.
-- **Global hotkey çalışmıyor** → `pip install keyboard`. Windows'ta bazı oyunlar admin korumalı; uygulamayı yönetici olarak çalıştır.
-- **Auto-pause yanlış pencereyi hedef alıyor** → Taramayı durdur, oyun penceresine Alt-Tab yap, sonra tekrar başlat.
-- **DeepL 429** → ücretsiz kotayı aştın, ay başını bekle veya başka motora geç.
+- **OCR empty** -> Enlarge the region a bit, try **Find Mode**, set OCR upscale to 4x.
+- **Emoji/icons leaking in** -> They're filtered automatically; if the problem persists, narrow the region to just the text line.
+- **Global hotkey not working** -> `pip install keyboard`. On Windows, some games are admin-protected; run the app as administrator.
+- **Auto-pause targets the wrong window** -> Stop scanning, Alt-Tab to the game window, then start again.
+- **DeepL 429** -> You've hit the free monthly quota; wait for next month or switch engine.
 """
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 def warn_tesseract_missing():
-    """Tesseract yoksa kullanıcıya uyarı + indirme linki."""
+    """Warn the user when Tesseract is missing and provide a download link."""
     box = QMessageBox()
     box.setIcon(QMessageBox.Critical)
-    box.setWindowTitle("Tesseract OCR bulunamadı  ·  SubLens")
+    box.setWindowTitle("Tesseract OCR not found  ·  SubLens")
     box.setTextFormat(Qt.RichText)
     box.setText(
-        "<b>SubLens metin okumak için Tesseract OCR gerektirir.</b><br><br>"
-        "Sistemde bulunamadı. OCR olmadan ekrandaki metin okunamaz "
-        "ve çeviri çalışmaz.")
+        "<b>SubLens requires Tesseract OCR to read text.</b><br><br>"
+        "It was not found on the system. Without OCR, on-screen text "
+        "cannot be read and translation will not work.")
     box.setInformativeText(
-        f"Kurulum sayfası:<br><a href='{TESSERACT_URL}'>{TESSERACT_URL}</a><br><br>"
-        "Kurulum sırasında <b>Additional language data</b> bölümünden "
-        "<b>Turkish (tur)</b> ve diğer kullanacağın dilleri işaretle.<br><br>"
-        "Varsayılan konuma kur (C:\\Program Files\\Tesseract-OCR), "
-        "SubLens'i yeniden başlat — otomatik bulunur.")
-    dl_btn = box.addButton("İndirme sayfasını aç", QMessageBox.AcceptRole)
-    box.addButton("Yine de devam et", QMessageBox.RejectRole)
+        f"Installation page:<br><a href='{TESSERACT_URL}'>{TESSERACT_URL}</a><br><br>"
+        "During installation, check <b>Turkish (tur)</b> and the other "
+        "languages you'll use under <b>Additional language data</b>.<br><br>"
+        "Install to the default location (C:\\Program Files\\Tesseract-OCR), "
+        "restart SubLens - it will be detected automatically.")
+    dl_btn = box.addButton("Open download page", QMessageBox.AcceptRole)
+    box.addButton("Continue anyway", QMessageBox.RejectRole)
     box.setDefaultButton(dl_btn)
     box.exec()
     if box.clickedButton() is dl_btn:
@@ -2034,13 +2034,13 @@ def warn_tesseract_missing():
 
 
 def main():
-    # Qt6'da High-DPI ölçek zaten default, ayrıca açmaya gerek yok.
+    # On Qt6, High-DPI scaling is default; no need to enable it explicitly.
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    # Pencere tray'e gizlendiğinde uygulama kapanmasın
+    # Don't quit the app when the window is hidden to the tray
     app.setQuitOnLastWindowClosed(False)
 
-    # Uygulama ikonu (exe içine gömülmüş .ico yoksa runtime tray ikonunu kullan)
+    # App icon (use the runtime tray icon if no embedded .ico is available)
     ico_path = Path(__file__).with_name("SubLens.ico")
     if getattr(sys, "frozen", False):
         ico_path = Path(sys._MEIPASS) / "SubLens.ico"
@@ -2049,7 +2049,7 @@ def main():
     else:
         app.setWindowIcon(make_tray_icon(False))
 
-    # Tesseract kontrolü
+    # Tesseract check
     if not _tess_path:
         warn_tesseract_missing()
     pal = app.palette()
