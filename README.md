@@ -61,7 +61,7 @@ pip install pillow pytesseract PySide6 mss keyboard pywin32
 ## Installation
 
 ```bash
-git clone https://github.com/your-username/SubLens.git
+git clone https://github.com/bnsware/SubLens.git
 cd SubLens
 pip install pillow pytesseract PySide6 mss keyboard pywin32
 python sublens.py
