@@ -6,6 +6,8 @@
   <img src="SubLens.ico" alt="SubLens" width="80"/>
 </p>
 
+> **TÜRKÇE BİLGİLENDİRME** [README TR](READMEtr.md).
+
 ---
 
 ## Features
