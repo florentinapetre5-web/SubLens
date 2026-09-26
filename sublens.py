@@ -821,7 +821,7 @@ class MainWindow(QMainWindow):
     def _apply_style(self):
         self.setStyleSheet(f"""
             QMainWindow, QDialog {{ background: {BG_DARK}; }}
-            QWidget {{ color: {TEXT_PRIMARY}; font-family: 'Segoe UI'; font-size: 10pt; }}
+           QWidget {{ color: {TEXT_PRIMARY}; font-family: 'Segoe UI'; font-size: 25pt; }}
             QLabel#title {{ font: bold 20pt 'Segoe UI'; color: {ACCENT}; }}
             QLabel#title2 {{ font: bold 20pt 'Segoe UI'; color: {TEXT_PRIMARY}; }}
             QLabel.section {{ color: {TEXT_DIM}; font: bold 9pt 'Consolas'; letter-spacing: 1px; }}
