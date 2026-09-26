@@ -1,0 +1,38 @@
+name: Build SubLens EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Python kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python paketlerini kur
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Tesseract kur
+        run: choco install tesseract --yes
+
+      - name: EXE oluştur
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name SubLens --icon SubLens.ico --add-data "READMEapp.md;." --add-data "C:\Program Files\Tesseract-OCR;tesseract" sublens.py
+
+      - name: EXE dosyasını yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: SubLens-Windows
+          path: dist/SubLens.exe
