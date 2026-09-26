@@ -643,7 +643,7 @@ class OverlayWindow(QWidget):
         self.lbl.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.lbl.setStyleSheet(
             f"color: {TEXT_PRIMARY}; background: transparent; "
-            f"font: 13pt 'Segoe UI';")
+            f"font: 25pt 'Segoe UI';")
         self.lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         v.addWidget(self.lbl, 1)
 
